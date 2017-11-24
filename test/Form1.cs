@@ -20,7 +20,7 @@ namespace test
         }
         private void Run()
         {
-            { 
+            {
                 DontSave.DisableGlobaly = true;
                 SaveAs.DisableGlobaly = true;
                 SaveStaticFields.DisableGlobaly = true;
@@ -79,7 +79,7 @@ namespace test
 
         private void button1_Click(object sender, EventArgs e)
         {
-            new SerializeObjectTest();
+            SerializeObjectTest.Test();
         }
     }
 }

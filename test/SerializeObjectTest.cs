@@ -1,11 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Drawing;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Xml;
 using System.Xml.Serialization;
 using System.IO;
@@ -13,9 +6,9 @@ using System.Windows.Forms;
 
 namespace test
 {
-    public  class SerializeObjectTest
+    public class SerializeObjectTest
     {
-        public SerializeObjectTest()
+        public static void Test()
         {
             // with SerializeObject 
             {
@@ -23,47 +16,41 @@ namespace test
                 a1.init();
                 SerializeObject<A>(a1, "d:\\1.xml");
                 var a2 = DeSerializeObject<A>("d:\\1.xml");
-                a1.b[0].a = 4;
-                a2.b[0].a = 4;
+                a1.b1.x = 5; // this will change also the value of a1.b2.x
+                a2.b1.x = 5; // this will not!!!!! change also the value of a2.b2.x
                 MessageBox.Show(
-                    "a1.b[0].a==a1.b[2].a : " + a1.b[0].a + "?=" + a1.b[2].a + "\r\n" +
-                    "a2.b[0].a==a2.b[2].a : " + a2.b[0].a + "?=" + a2.b[2].a + " !!!!!\r\n", "SerializeObject"
+                    "a1.b1.x==a1.b2.x : " + a1.b1.x + "?=" + a1.b2.x + "\r\n" +
+                    "a2.b1.1==a2.b2.x : " + a2.b1.x + "?=" + a2.b2.x + "  !!\r\n", "Save.SaveAble"
                     );
             }
             // with saver
             {
                 var a1 = new A();
                 a1.init();
-                Saver.SaveAble.Save("d:\\1.xml", a1);
-                var a2 = Saver.SaveAble.Load<A>("d:\\1.xml");
-                a1.b[0].a = 4;
-                a2.b[0].a = 4;
+                Saver.SaveAble.Save("d:\\2.xml", a1);
+                var a2 = Saver.SaveAble.Load<A>("d:\\2.xml");
+                a1.b1.x = 5; // this will change also the value of a1.b2.x
+                a2.b1.x = 5; // this will change also the value of a2.b2.x
                 MessageBox.Show(
-                    "a1.b[0].a==a1.b[2].a : " + a1.b[0].a + "?=" + a1.b[2].a + "\r\n" +
-                    "a2.b[0].a==a2.b[2].a : " + a2.b[0].a + "?=" + a2.b[2].a + "  ok\r\n", "Save.SaveAble"
+                    "a1.b1.x==a1.b2.x : " + a1.b1.x + "?=" + a1.b2.x + "\r\n" +
+                    "a2.b1.1==a2.b2.x : " + a2.b1.x + "?=" + a2.b2.x + "  ok\r\n", "Save.SaveAble"
                     );
             }
         }
 
-        [Serializable]
         public class A
         {
             public void init()
             {
-                var b1 = new B() { a = 1, b = 2, c = 3 };
-                var b2 = new B() { a = 10, b = 20, c = 30 };
-                b = new List<B>();
-                b.Add(b1);
-                b.Add(b2);
-                b.Add(b1);
-                b.Add(b2);
+                b1 = new B() { x = 100 };
+                b2 = b1;
             }
-            public List<B> b;
+            public B b1;
+            public B b2;
         }
-        [Serializable]
         public class B
         {
-            public double a, b, c;
+            public double x;
         }
 
         /// <summary>
@@ -72,7 +59,7 @@ namespace test
         /// <typeparam name="T"></typeparam>
         /// <param name="serializableObject"></param>
         /// <param name="fileName"></param>
-        public void SerializeObject<T>(T serializableObject, string fileName)
+        public static void SerializeObject<T>(T serializableObject, string fileName)
         {
             if (serializableObject == null) { return; }
 
@@ -102,12 +89,11 @@ namespace test
         /// <typeparam name="T"></typeparam>
         /// <param name="fileName"></param>
         /// <returns></returns>
-        public T DeSerializeObject<T>(string fileName)
+        public static T DeSerializeObject<T>(string fileName)
         {
             if (string.IsNullOrEmpty(fileName)) { return default(T); }
 
             T objectOut = default(T);
-
             try
             {
                 XmlDocument xmlDocument = new XmlDocument();
