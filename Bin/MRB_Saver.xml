@@ -24,11 +24,6 @@
             این آبجک ها ذخیره نمی شوند
             </summary>
         </member>
-        <member name="F:Saver.SaveAble.Settings.use_nrmap">
-            <summary>
-            for obfuscation
-            </summary>
-        </member>
         <member name="F:Saver.SaveAble.Settings.FormatedXML">
             <summary>
             save xml file formatted?

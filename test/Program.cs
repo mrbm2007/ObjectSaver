@@ -13,9 +13,7 @@ namespace test
         /// </summary>
         [STAThread]
         static void Main()
-        { 
-
-            SaveAble.Settings.use_nrmap = true;
+        {  
             DontSave.DisableGlobaly = true;
             SaveAs.DisableGlobaly = true; 
 

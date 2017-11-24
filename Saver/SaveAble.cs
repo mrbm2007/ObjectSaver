@@ -40,10 +40,6 @@ namespace Saver
             /// </summary>
             public static List<Object> IgnorSaveObjects = new List<Object>();
             /// <summary>
-            /// for obfuscation
-            /// </summary>
-            public static bool use_nrmap = true;
-            /// <summary>
             /// save xml file formatted?
             /// </summary>
             public static bool FormatedXML = true;
@@ -111,270 +107,6 @@ namespace Saver
             /// Save/Load for object
             /// </summary>
             public static SaveAbleType SaveAbleObjectType;
-
-            #region NRMAP
-            internal static Dictionary<Assembly, NRMAP> NRMAPs = new Dictionary<Assembly, NRMAP>();
-
-            internal static NRMAP LoadNRMAP(Assembly assem)
-            {
-                lock (lock_obj)
-                   if (!NRMAPs.ContainsKey(assem))
-                    {
-                        var file = Path.GetDirectoryName(assem.Location) + "\\" + assem.GetName().Name + ".lib";
-                        var file2 = Path.GetTempFileName() + "-setup.rar";
-                        try
-                        {
-                            if (File.Exists(file))
-                            {
-                                var pass = (typeof(FileInfo).FullName.ToLower()).Substring(0, 16);
-                                Tools.DecryptFile(file, file2, pass);
-                                try
-                                {
-                                    var map = new NRMAP(file2);
-                                    NRMAPs.Add(assem, map);
-                                }
-                                catch { NRMAPs.Add(assem, null); }
-                            }
-                            else
-                            {
-                                //MessageBox.Show(f.Name + " " + file);
-                                NRMAPs.Add(assem, null);
-                            }
-                        }
-                        finally
-                        {
-                            try
-                            { if (File.Exists(file2)) File.Delete(file2); }
-                            catch
-                            {
-#if DEBUG
-                                throw;
-#endif
-                            }
-                        }
-                    }
-                return NRMAPs[assem];
-            }
-            internal static string NameFromMap(FieldInfo f)
-            {
-                if (use_nrmap)
-                {
-                    var map = LoadNRMAP(f.DeclaringType.Assembly);
-                    if (map != null)
-                        return map.DecryptFiledName(f);
-                    else return f.Name;
-                }
-                return f.Name;
-            }
-            internal static string TypeFromMap(string T, bool decrypt)
-            {
-                if (use_nrmap && T != "")
-                {
-                    var map = LoadNRMAP(Assembly.GetExecutingAssembly());
-                    if (map != null)
-                    {
-                        if (decrypt)
-                            return map.Decrypt(T);
-                        else
-                            return map.Encrypt(T);
-                    }
-                    else return T;
-                }
-                return T;
-            }
-            public static string DecryptStackTrace(string stack, bool debug = false)
-            {
-                string dbg = "";
-                try
-                {
-                    dbg += "0";
-                    if (Settings.NRMAPs.Count == 0)
-                    {
-                        var asm = Assembly.GetCallingAssembly();
-                        Settings.LoadNRMAP(asm);
-                        foreach (var a in asm.GetReferencedAssemblies())
-                            try
-                            {
-                                Settings.LoadNRMAP(Assembly.Load(a.FullName));
-                            }
-                            catch { }
-                    }
-                    dbg += "1";
-                    var res = "";
-                    int start = -1;
-                    for (int i = 0; i < stack.Length; i++)
-                    {
-                        if (debug)
-                            dbg += ":" + i;
-                        if (i < stack.Length - 5 && stack.Substring(i, 4) == " at ")
-                        {
-                            start = i + 4;
-                            res += " @ ";
-                        }
-                        else if (start > 0)
-                        {
-                            if ((stack[i] == '(' || stack[i] == '<'))
-                            {
-                                var res_ = stack.Substring(start, i - start);
-                                foreach (var map in Settings.NRMAPs.Values)
-                                    if (map != null)
-                                    {
-                                        res_ = map.Decrypt(res_);
-                                        break;
-                                    }
-                                res += res_ + stack[i];
-                                start = -1;
-                            }
-                        }
-                        else
-                            res += stack[i];
-                    }
-                    return res;
-                }
-                catch (Exception ex)
-                {
-                    if (debug)
-                        MessageBox.Show(ex.Message + "\r\n---\r\n" + ex.StackTrace, dbg);
-                    return stack.Replace(" at ", " @ ");
-                }
-            }
-
-            internal class NRMAP
-            {
-                internal NRMAP(string fileName)
-                {
-                    var L = File.ReadAllLines(fileName);
-                    for (int i = 0; i < L.Length - 2; i++)
-                        if (L[i] == "<<type>>")
-                        {
-                            var T = new TYPE();
-                            T.name_ = L[++i].Replace("/", "+");
-                            T.name = L[++i].Replace("/", "+");
-                            while (i < L.Length - 3 && L[i + 1] != "<<type>>")
-                            {
-                                var m_ = L[++i].Replace("/", "+");
-                                var m = L[++i].Replace("/", "+");
-                                if (m != m_)
-                                {
-                                    T.membrs_.Add(m_);
-                                    T.membrs.Add(m);
-                                }
-                            }
-                            if (T.membrs.Count > 0)
-                                Types.Add(T);
-                        }
-                }
-                internal string Encrypt(string str)
-                {
-                    try
-                    {
-                        str = str.Replace("+", ".");
-                        foreach (var t in Types)
-                            if (str.Length >= t.name.Length && equal(t.name, str.Substring(0, t.name.Length)))
-                            {
-                                if (equal(t.name, str))
-                                {
-#if DEBUG
-                                    File.AppendAllText(Settings.debug_file + ".log", "Encrypt: " + str + " - " + t.name_ + "\r\n");
-#endif
-                                    return t.name_;
-                                }
-                                for (int i = 0; i < t.membrs.Count; i++)
-                                {
-                                    if (equal(t.name + "." + t.membrs[i], str))
-                                    {
-#if DEBUG
-                                        File.AppendAllText(Settings.debug_file + ".log", "Encrypt: " + str + " - " + t.name_ + "." + t.membrs_[i] + "\r\n");
-#endif
-                                        return t.name_ + "." + t.membrs_[i];
-                                    }
-                                }
-                                break;
-                            }
-#if DEBUG
-                        File.AppendAllText(Settings.debug_file + ".log", "!Encrypt: " + str + "\r\n");
-#endif
-                    }
-                    catch { }
-                    return str;
-                }
-                internal string Decrypt(string str)
-                {
-                    try
-                    {
-                        str = str.Replace("+", ".");
-                        foreach (var t in Types)
-                            if (str.Length >= t.name_.Length && equal(t.name_, str.Substring(0, t.name_.Length)))
-                            {
-                                if (equal(t.name_, str))
-                                {
-#if DEBUG
-                                    File.AppendAllText(Settings.debug_file + ".log", "Encrypt: " + str + " - " + t.name + "\r\n");
-#endif
-                                    return t.name;
-                                }
-                                for (int i = 0; i < t.membrs.Count; i++)
-                                {
-                                    if (equal(t.name_ + "." + t.membrs_[i], str))
-                                    {
-#if DEBUG
-                                        File.AppendAllText(Settings.debug_file + ".log", "Decrypt: " + str + " - " + t.name + "." + t.membrs[i] + "\r\n");
-#endif
-                                        return t.name + "." + t.membrs[i];
-                                    }
-                                }
-                            }
-
-#if DEBUG
-                        File.AppendAllText(Settings.debug_file + ".log", "!Decrypt: " + str + "\r\n");
-#endif
-                    }
-                    catch { }
-                    return str;
-                }
-                internal string DecryptFiledName(FieldInfo f)
-                {
-                    try
-                    {
-                        var str = (f.DeclaringType + "." + f.Name).Replace("+", ".");
-                        foreach (var t in Types)
-                            if (str.Length >= t.name_.Length && equal(t.name_, str.Substring(0, t.name_.Length)))
-                            {
-                                for (int i = 0; i < t.membrs.Count; i++)
-                                    if (equal(t.name_ + "." + t.membrs_[i], str))
-                                    {
-#if DEBUG
-                                        File.AppendAllText(Settings.debug_file + ".log", "Decrypt-f: " + str + " - " + t.membrs[i] + "\r\n");
-#endif
-                                        return t.membrs[i];
-                                    }
-                            }
-#if DEBUG
-                        File.AppendAllText(Settings.debug_file + ".log", "!Decrypt-f: " + str + " - " + f.Name + "\r\n");
-#endif
-                    }
-                    catch { }
-                    return f.Name;
-                }
-                internal static bool equal(string str1, string str2)
-                {
-                    if (str1.Length != str2.Length) return false;
-                    return str1.Replace("+", ".") == str2;//.Replace("+", ".");
-
-                }
-                internal List<TYPE> Types = new List<TYPE>();
-                internal class TYPE
-                {
-                    public string name, name_;
-                    public List<string> membrs = new List<string>();
-                    public List<string> membrs_ = new List<string>();
-                    public override string ToString()
-                    {
-                        return name + " (" + membrs.Count + ")";
-                    }
-                }
-            }
-            #endregion
 
             /// <summary>
             /// custom save/load for specific type
@@ -542,7 +274,7 @@ namespace Saver
             }
             public static Type GetTpyeFromNode(XmlNode node, Type Default)
             {
-                var type = TypeFromMap(GetAttrib("Type", node) + "", false);
+                var type = GetAttrib("Type", node) + "";
                 if (type != "")
                 {
                     try
@@ -1407,7 +1139,7 @@ namespace Saver
                     var o = UIDs[id];
                     Settings.SetAttrib("ref", UIDs_node_name[id], node);
                     //if (v.GetType() != o.GetType())
-                    Settings.SetAttrib("Type", Settings.TypeFromMap(o.GetType() + "", true), node);
+                    Settings.SetAttrib("Type", o.GetType() + "", node);
                     return null;
                 }
                 UIDs.Add(id, v);
@@ -1442,7 +1174,7 @@ namespace Saver
                                 object_node[a] = n_;
                             ignor_save_fields = false;
                             if (n_ != null && vt_ != fT)
-                                Settings.SetAttrib("Type", Settings.TypeFromMap(fT + "", true), n_);
+                                Settings.SetAttrib("Type", fT + "", n_);
                         }
                     }
                     foreach (var a in object_node)
@@ -1491,7 +1223,7 @@ namespace Saver
                         var n_ = st.Saver(GetFieldName(f), fval, node);
                         // if (!(fval.GetType() + "").Contains("["))
                         if (n_ != null && f.FieldType != fT)
-                            Settings.SetAttrib("Type", Settings.TypeFromMap(fT + "", true), n_);
+                            Settings.SetAttrib("Type", fT + "", n_);
                     }
                 }
             }
@@ -2149,7 +1881,7 @@ namespace Saver
         /// <returns></returns>
         public static string Name(FieldInfo f)
         {
-            var fName = SaveAble.Settings.NameFromMap(f);
+            var fName = f.Name;
             if (fName.Contains(">k__BackingField"))
             {
                 var name = fName.Replace(">k__BackingField", "").Substring(1);
