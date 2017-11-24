@@ -1,0 +1,5 @@
+Saver/obj/*
+Sacer/bin/*
+.vs/*
+test/bin/*
+test/obj/*

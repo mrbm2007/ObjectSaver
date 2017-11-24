@@ -1,0 +1,400 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>Saver</name>
+    </assembly>
+    <members>
+        <member name="T:Saver.SaveAble">
+            <summary>
+            Save / Load ability 
+            </summary>
+        </member>
+        <member name="F:Saver.SaveAble.Settings.IgnorUIDs">
+            <summary>
+            مساوی بودن آبجکت های این کلاس ها با استفاده از آی دی چک نخواهد شد
+            </summary>
+        </member>
+        <member name="F:Saver.SaveAble.Settings.IgnorTypes">
+            <summary>
+            این نوع ها ذخیره نمی شوند
+            </summary>
+        </member>
+        <member name="F:Saver.SaveAble.Settings.IgnorSaveObjects">
+            <summary>
+            این آبجک ها ذخیره نمی شوند
+            </summary>
+        </member>
+        <member name="F:Saver.SaveAble.Settings.use_nrmap">
+            <summary>
+            for obfuscation
+            </summary>
+        </member>
+        <member name="F:Saver.SaveAble.Settings.FormatedXML">
+            <summary>
+            save xml file formatted?
+            </summary>
+        </member>
+        <member name="P:Saver.SaveAble.Settings.Version">
+            <summary>
+            saver version (Assembly)
+            </summary>
+        </member>
+        <member name="P:Saver.SaveAble.Settings.debug_file">
+            <summary>
+            path to the log file, for debug purpose 
+            </summary>
+        </member>
+        <member name="M:Saver.SaveAble.Settings.AddSaveAbleType(System.Type,Saver.SaveAble.Settings.LoadFuncSimple,Saver.SaveAble.Settings.SaveFuncSimple,System.Boolean)">
+            <summary>
+            
+            </summary>
+            <param name="type"></param>
+            <param name="Loader">simple for string: (str) => Convert.ToInt32(str)</param>
+            <param name="Saver">simple for string: (v) => v + ""</param>
+            <param name="in_first_place"></param>
+            <returns></returns>
+        </member>
+        <member name="M:Saver.SaveAble.Settings.AddSaveAbleType(System.Type,Saver.SaveAble.Settings.LoadFunc,Saver.SaveAble.Settings.SaveFunc,System.Boolean)">
+            <summary>
+            
+            </summary>
+            <param name="type"></param>
+            <param name="Loader">simple for string: (t, n, r, v) => Convert.ToInt32(Settings.GetNodeVal(n, r))</param>
+            <param name="Saver">simple for string: (n, v, r) => Settings.AddNode(n, v + "", r)</param>
+            <param name="in_first_place"></param>
+            <returns></returns>
+        </member>
+        <member name="F:Saver.SaveAble.Settings.Types">
+            <summary>
+            defined types for custom save/load
+            </summary>
+        </member>
+        <member name="F:Saver.SaveAble.Settings.SaveAbleObjectType">
+            <summary>
+            Save/Load for object
+            </summary>
+        </member>
+        <member name="T:Saver.SaveAble.Settings.SaveAbleType">
+            <summary>
+            custom save/load for specific type
+            </summary>
+        </member>
+        <member name="F:Saver.SaveAble.Settings.SaveAbleType.Loader">
+            <summary>
+            simple for string: (t, n, r, v) => Convert.ToInt32(Settings.GetNodeVal(n, r))
+            </summary>
+        </member>
+        <member name="F:Saver.SaveAble.Settings.SaveAbleType.Saver">
+            <summary>
+            simple for string: (n, v, r) => Settings.AddNode(n, v + "", r);
+            </summary>
+        </member>
+        <member name="F:Saver.SaveAble.Settings.exceptionBehavior">
+            <summary>
+            when an exception occurs 
+            </summary>
+        </member>
+        <member name="F:Saver.SaveAble.Settings.Encryption">
+            <summary>
+            Encryption names?
+            </summary>
+        </member>
+        <member name="F:Saver.SaveAble.Settings.saveStaticFields">
+            <summary>
+            Save static fields?
+            </summary>
+        </member>
+        <member name="F:Saver.SaveAble.Settings.SerializeArrays">
+            <summary>
+            save array in binary format?
+            </summary>
+        </member>
+        <member name="T:Saver.SaveAble.Settings.ExceptionBehavior">
+            <summary>
+            when an exception occurs 
+            </summary>
+        </member>
+        <member name="T:Saver.SaveAble.Settings.StaticFieldsBehavior">
+            <summary>
+            Save static fields?
+            </summary>
+        </member>
+        <member name="M:Saver.SaveAble.Settings.Error(System.Exception,System.String)">
+            <summary>
+            
+            </summary>
+            <returns>aborted?</returns>
+        </member>
+        <member name="F:Saver.SaveAble.Settings.abort">
+            <summary>
+            will be set at Error()
+            </summary>
+        </member>
+        <member name="F:Saver.SaveAble.UIDs">
+            <summary>
+            لیستی از آبجکت های ذخیره یا لود شده بر اساس آی دی
+            </summary>
+        </member>
+        <member name="F:Saver.SaveAble.UIDs_node_name">
+            <summary>
+            for save
+            </summary>
+        </member>
+        <member name="M:Saver.SaveAble.BeginSave">
+            <summary>
+            before save done, (internally)
+            </summary>
+            <returns></returns>
+        </member>
+        <member name="M:Saver.SaveAble.EndSave">
+            <summary>
+            after save done, (internally)
+            </summary>
+            <returns></returns>
+        </member>
+        <member name="M:Saver.SaveAble.BeginLoad(System.String)">
+            <summary>
+            before load done, (internally)
+            </summary>
+            <returns></returns>
+        </member>
+        <member name="M:Saver.SaveAble.Save4Hash">
+            <summary>
+            will not update current hash
+            </summary>
+            <returns>Hash Code</returns>
+        </member>
+        <member name="M:Saver.SaveAble.LoadFromObject(System.Object,System.Object[])">
+            <summary>
+            clone an abject to this
+            </summary>
+            <param name="obj"></param>
+            <param name="IgnorObjects"></param>
+        </member>
+        <member name="M:Saver.SaveAble.Save(System.String,System.Object[])">
+            <summary>
+            
+            </summary>
+            <param name="fileName"></param>
+            <param name="IgnorObjects">List of objects that will not be saved</param>
+            <returns>Hash Code</returns>
+        </member>
+        <member name="M:Saver.SaveAble.Load(System.String)">
+            <summary>
+            Load from file
+            </summary>
+            <param name="fileName"></param>
+        </member>
+        <member name="M:Saver.SaveAble.Save(System.String,System.Object)">
+            <summary>
+            Save an object to file
+            </summary>
+            <param name="fileName"></param>
+            <param name="obj">objact that will be saved in file</param>
+            <returns>Hash Code</returns>
+        </member>
+        <member name="M:Saver.SaveAble.Load``1(System.String)">
+            <summary>
+            load from file
+            </summary>
+            <typeparam name="T"></typeparam>
+            <param name="fileName"></param>
+            <returns></returns>
+        </member>
+        <member name="M:Saver.SaveAble.Load(System.String,System.Object)">
+            <summary>
+            Load from file
+            </summary>
+            <param name="fileName"></param>
+            <param name="obj"></param>
+            <returns></returns>
+        </member>
+        <member name="M:Saver.SaveAble.Load_(System.String,System.Type)">
+            <summary>
+            Load from file
+            </summary>
+            <param name="fileName"></param>
+            <param name="type"></param>
+            <returns></returns>
+        </member>
+        <member name="M:Saver.SaveAble.SaveString(System.Object[])">
+            <summary>
+            Save object as a string instead a file
+            </summary>
+            <param name="IgnorObjects"></param>
+            <returns></returns>
+        </member>
+        <member name="M:Saver.SaveAble.SaveString(System.Object)">
+            <summary>
+            Save object as a string instead a file
+            </summary>
+            <param name="obj"></param>
+            <returns></returns>
+        </member>
+        <member name="M:Saver.SaveAble.LoadString(System.String)">
+            <summary>
+            Load object from a string instead an file
+            </summary>
+            <param name="str"></param>
+        </member>
+        <member name="M:Saver.SaveAble.LoadString(System.String,System.Object)">
+            <summary>
+            Load object from a string instead an file
+            </summary>
+            <param name="str"></param>
+        </member>
+        <member name="P:Saver.SaveAble.IsSaved">
+            <summary>
+            is saved in a file
+            </summary>
+        </member>
+        <member name="P:Saver.SaveAble.IsChanged">
+            <summary>
+            is changed after last save in a file or load from a file
+            </summary>
+        </member>
+        <member name="T:Saver.DontSave">
+            <summary>
+            this field will not be saved
+            </summary>
+        </member>
+        <member name="F:Saver.DontSave.DisableGlobaly">
+            <summary>
+            DontSave Attribute will not work at all
+            </summary>
+        </member>
+        <member name="M:Saver.DontSave.Save(System.Reflection.FieldInfo)">
+            <summary>
+            save or not?
+            </summary>
+            <param name="f"></param>
+            <returns></returns>
+        </member>
+        <member name="M:Saver.DontSave.Save(System.Object)">
+            <summary>
+            save or not?
+            </summary>
+            <param name="v"></param>
+            <returns></returns>
+        </member>
+        <member name="T:Saver.SaveCondition">
+            <summary>
+            will be saved if SaveIf.AllowSave is true
+            </summary>
+        </member>
+        <member name="M:Saver.SaveCondition.#ctor(System.Object,System.Object)">
+            <summary>
+            
+            </summary>
+            <param name="save_if_this_tag_exist"></param>
+            <param name="dont_save_if_this_tag_exist"></param>
+        </member>
+        <member name="M:Saver.SaveCondition.Save(System.Reflection.FieldInfo)">
+            <summary>
+            save or not
+            </summary>
+            <param name="f"></param>
+            <returns></returns>
+        </member>
+        <member name="M:Saver.SaveCondition.Save(System.Object)">
+            <summary>
+            save or not
+            </summary>
+            <param name="v"></param>
+            <returns></returns>
+        </member>
+        <member name="T:Saver.SaveAs">
+            <summary>
+            define a name for the field
+            </summary>
+        </member>
+        <member name="F:Saver.SaveAs.DisableGlobaly">
+            <summary>
+            SaveAs Attribute will not work at all
+            </summary>
+        </member>
+        <member name="F:Saver.SaveAs.name">
+            <summary>
+            name for save
+            </summary>
+        </member>
+        <member name="M:Saver.SaveAs.#ctor(System.String)">
+            <summary>
+            
+            </summary>
+            <param name="name">given name for save and load</param>
+        </member>
+        <member name="M:Saver.SaveAs.Name(System.Reflection.FieldInfo)">
+            <summary>
+            given name for save and load
+            </summary>
+            <param name="f"></param>
+            <returns></returns>
+        </member>
+        <member name="T:Saver.SaveStaticFields">
+            <summary>
+            Static Fields will be saved for this class | field
+            </summary>
+        </member>
+        <member name="F:Saver.SaveStaticFields.DisableGlobaly">
+            <summary>
+            SaveStaticFields Attribute will not work at all
+            </summary>
+        </member>
+        <member name="M:Saver.SaveStaticFields.Save(System.Reflection.FieldInfo)">
+            <summary>
+            save or not?
+            </summary>
+            <param name="f"></param>
+            <returns></returns>
+        </member>
+        <member name="M:Saver.SaveStaticFields.Save(System.Object)">
+            <summary>
+            save or not?
+            </summary>
+            <param name="v"></param>
+            <returns></returns>
+        </member>
+        <member name="T:Saver.Settings">
+            <summary>
+            Settings
+            </summary>
+        </member>
+        <member name="M:Saver.Tools.EncryptFile(System.String,System.String,System.String)">
+            <summary>
+             Steve Lydford - 12/05/2008.
+            
+             Encrypts a file using Rijndael algorithm.
+            </summary>
+            <param name="inputFile"></param>
+            <param name="outputFile"></param>
+            <param name="password"></param>
+        </member>
+        <member name="M:Saver.Tools.DecryptFile(System.String,System.String,System.String)">
+            <summary>
+             Steve Lydford - 12/05/2008.
+            
+             Decrypts a file using Rijndael algorithm.
+            </summary>
+            <param name="inputFile"></param>
+            <param name="outputFile"></param>
+            <param name="password"></param>
+        </member>
+        <member name="T:Saver.Properties.Resources">
+            <summary>
+              A strongly-typed resource class, for looking up localized strings, etc.
+            </summary>
+        </member>
+        <member name="P:Saver.Properties.Resources.ResourceManager">
+            <summary>
+              Returns the cached ResourceManager instance used by this class.
+            </summary>
+        </member>
+        <member name="P:Saver.Properties.Resources.Culture">
+            <summary>
+              Overrides the current thread's CurrentUICulture property for all
+              resource lookups using this strongly typed resource class.
+            </summary>
+        </member>
+    </members>
+</doc>
