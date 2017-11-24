@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <doc>
     <assembly>
-        <name>Saver</name>
+        <name>MRB_Saver</name>
     </assembly>
     <members>
         <member name="T:Saver.SaveAble">
