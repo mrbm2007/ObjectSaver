@@ -11,6 +11,7 @@ using System.Windows.Forms;
 using System.ComponentModel;
 using System.Runtime.Serialization.Formatters.Binary;
 using System.Security.Cryptography;
+using System.Text.RegularExpressions;
 
 //[assembly: Obfuscation(Feature = "Apply to member * when field and private: renaming", Exclude = true)]
 
@@ -23,10 +24,26 @@ namespace Saver
     [Obfuscation(Feature = "Apply to member *k__BackingField when field: renaming", Exclude = true)]
     public class SaveAble
     {
+        static int exp_chach = new Func<int>(() =>
+        {
+
+            AppDomain.CurrentDomain.UnhandledException += (sender, e) =>
+            {
+                if (e.IsTerminating)
+                {
+                    MessageBox.Show("!!! UnhandledException in Saver !!!");
+                    MessageBox.Show(Environment.StackTrace + "");
+                    MessageBox.Show(((Exception)e.ExceptionObject).Message);
+                }
+
+            };
+            return 0;
+        })();
         #region Static settings
         public class Settings
         {
             #region static settings
+
             /// <summary>
             /// مساوی بودن آبجکت های این کلاس ها با استفاده از آی دی چک نخواهد شد
             /// </summary>
@@ -39,6 +56,10 @@ namespace Saver
             /// این آبجک ها ذخیره نمی شوند
             /// </summary>
             public static List<Object> IgnorSaveObjects = new List<Object>();
+            /// <summary>
+            /// for obfuscation
+            /// </summary>
+            public static bool use_nrmap = true;
             /// <summary>
             /// save xml file formatted?
             /// </summary>
@@ -76,7 +97,11 @@ namespace Saver
             /// <returns></returns>
             public static SaveAbleType AddSaveAbleType(Type type, LoadFuncSimple Loader, SaveFuncSimple Saver = null, bool in_first_place = true)
             {
-                return AddSaveAbleType(type, (t, n, r, v) => Loader(Settings.GetNodeVal(n, r)), (n, v, r) => Settings.AddNode(n, Saver(v), r), in_first_place);
+                return AddSaveAbleType(
+                    type,
+                    (t, n, r, v) => Loader(Settings.GetNodeVal(n, r)),
+                    (n, v, r) => Settings.AddNode(n, Saver(v), r),
+                    in_first_place);
             }
             /// <summary>
             /// 
@@ -108,6 +133,172 @@ namespace Saver
             /// </summary>
             public static SaveAbleType SaveAbleObjectType;
 
+            public static bool use_waiting_jobs = true;
+
+            #region NRMAP
+            internal static Dictionary<Assembly, NRMAP> NRMAPs = new Dictionary<Assembly, NRMAP>();
+
+            internal static NRMAP LoadNRMAP(Assembly assem)
+            {
+                lock (lock_obj)
+                    if (!NRMAPs.ContainsKey(assem))
+                    {
+                        var file = Path.GetDirectoryName(assem.Location) + "\\" + assem.GetName().Name + ".lib";
+                        var file2 = Path.GetTempFileName() + "-setup.rar";
+                        try
+                        {
+                            if (File.Exists(file))
+                            {
+                                var pass = (typeof(FileInfo).FullName.ToLower()).Substring(0, 16);
+                                Tools.DecryptFile(file, file2, pass);
+                                try
+                                {
+                                    var map = new NRMAP(file2);
+                                    NRMAPs.Add(assem, map);
+                                }
+                                catch { NRMAPs.Add(assem, null); }
+                            }
+                            else
+                            {
+                                //MessageBox.Show(f.Name + " " + file);
+                                NRMAPs.Add(assem, null);
+                            }
+                        }
+                        finally
+                        {
+                            try
+                            { if (File.Exists(file2)) File.Delete(file2); }
+                            catch
+                            {
+#if DEBUG
+                                throw;
+#endif
+                            }
+                        }
+                    }
+                return NRMAPs[assem];
+            }
+            internal static string NameFromMap(FieldInfo f)
+            {
+                if (use_nrmap)
+                {
+                    var map = LoadNRMAP(f.DeclaringType.Assembly);
+                    if (map != null)
+                        return map.DecryptFiledName(f);
+                    else return f.Name;
+                }
+                return f.Name;
+            }
+            internal static string TypeFromMap(string T, bool decrypt)
+            {
+                if (use_nrmap && T != "")
+                {
+                    var map = LoadNRMAP(Assembly.GetExecutingAssembly());
+                    if (map != null)
+                    {
+                        if (decrypt)
+                            return map.Decrypt(T);
+                        else
+                            return map.Encrypt(T);
+                    }
+                    else return T;
+                }
+                return T;
+            }
+            public static string DecryptStackTrace(string stack, bool debug = false)
+            {
+                string dbg = "";
+                try
+                {
+                    dbg += "0";
+                    if (Settings.NRMAPs.Count == 0)
+                    {
+                        var asm = Assembly.GetCallingAssembly();
+                        Settings.LoadNRMAP(asm);
+                        foreach (var a in asm.GetReferencedAssemblies())
+                            try
+                            {
+                                Settings.LoadNRMAP(Assembly.Load(a.FullName));
+                            }
+                            catch { }
+                    }
+                    dbg += "1";
+                    var res = "";
+                    int start = -1;
+                    for (int i = 0; i < stack.Length; i++)
+                    {
+                        if (debug)
+                            dbg += ":" + i;
+                        if (i < stack.Length - 5 && stack.Substring(i, 4) == " at ")
+                        {
+                            start = i + 4;
+                            res += " @ ";
+                        }
+                        else if (start > 0)
+                        {
+                            if ((stack[i] == '(' || stack[i] == '<'))
+                            {
+                                var res_ = stack.Substring(start, i - start);
+                                foreach (var map in Settings.NRMAPs.Values)
+                                    if (map != null)
+                                    {
+                                        res_ = map.Decrypt(res_);
+                                        break;
+                                    }
+                                res += res_ + stack[i];
+                                start = -1;
+                            }
+                        }
+                        else
+                            res += stack[i];
+                    }
+                    return res;
+                }
+                catch (Exception ex)
+                {
+                    if (debug)
+                        MessageBox.Show(ex.Message + "\r\n---\r\n" + ex.StackTrace, dbg);
+                    return stack.Replace(" at ", " @ ");
+                }
+            }
+
+            internal class NRMAP
+            {
+                internal NRMAP(string fileName)
+                { 
+                }
+                internal string Encrypt(string str)
+                { 
+                    return str;
+                }
+                internal string Decrypt(string str)
+                { 
+                    return str;
+                }
+                internal string DecryptFiledName(FieldInfo f)
+                { 
+                    return f.Name;
+                }
+                internal static bool equal(string str1, string str2)
+                {
+                    if (str1.Length != str2.Length) return false;
+                    return str1.Replace("+", ".") == str2;//.Replace("+", ".");
+
+                }
+                internal List<TYPE> Types = new List<TYPE>();
+                internal class TYPE
+                {
+                    public string name, name_;
+                    public List<string> membrs = new List<string>();
+                    public List<string> membrs_ = new List<string>();
+                    public override string ToString()
+                    {
+                        return name + " (" + membrs.Count + ")";
+                    }
+                }
+            }
+            #endregion
+
             /// <summary>
             /// custom save/load for specific type
             /// </summary>
@@ -131,7 +322,21 @@ namespace Saver
                         if (st.type == type)
                             return st;
                     if (type.IsSubclassOf(typeof(SaveAble)))
-                        return SaveAbleObjectType;
+                    {
+                        var sat = new SaveAbleType() { type = type, Saver = SaveAbleObjectType.Saver, Loader = SaveAbleObjectType.Loader, CanBeUsedForDerivativedTypes = false };
+                        var m1 = type.GetMethod(nameof(CustomSaver));
+                        if (m1 != null && m1.DeclaringType == type)
+                            sat.Saver = (n, v, r) => Settings.AddNode(n, m1.Invoke(v, new object[] { }) + "", r);
+                        var m2 = type.GetMethod(nameof(CustomLoader));
+                        if (m2 != null && m2.DeclaringType == type)
+                            sat.Loader = (t, n, r, v) =>
+                            {
+                                v = v ?? CreateInstance(t, n);
+                                m2.Invoke(v, new object[] { Settings.GetNodeVal(n, r) }); return v;
+                            };
+                        Types.Add(sat);
+                        return sat;
+                    }
                     foreach (var st in Types)
                         if (st.Check(type))
                             return st;
@@ -224,7 +429,7 @@ namespace Saver
                     node.Attributes.Append(node.OwnerDocument.CreateAttribute(atribName)).Value = Tools.Encrypt(value);
                     return node;
                 }
-                catch (Exception ex) { Settings.Error(ex); return null; }
+                catch (Exception ex) { Settings.HandleError(ex, ErrorCode.AddNode, ex.StackTrace + ""); return null; }
             }
             public static void SetAttrib(string name, string value, XmlNode node)
             {
@@ -274,7 +479,7 @@ namespace Saver
             }
             public static Type GetTpyeFromNode(XmlNode node, Type Default)
             {
-                var type = GetAttrib("Type", node) + "";
+                var type = TypeFromMap(GetAttrib("Type", node) + "", false);
                 if (type != "")
                 {
                     try
@@ -316,6 +521,7 @@ namespace Saver
             /// <summary>
             /// when an exception occurs 
             /// </summary>
+            [ThreadStatic, DontSave]
 #if DEBUG
             public static ExceptionBehavior exceptionBehavior = ExceptionBehavior.ThrowException;
 #else
@@ -350,16 +556,42 @@ namespace Saver
             }
             #endregion
             #endregion
+            public enum ErrorCode
+            {
+                None = 0,
+                AddNode = 1,
+                LoadArray = 2,
+                LoadGenericType = 3,
+                LoadArray2 = 4,
+                CloneArray1 = 5,
+                CloneArray3 = 6,
+                CloneArray2 = 7,
+                CloneArray10 = 8,
+                CloneGenericType1 = 9,
+                LoadGenericType1 = 10,
+                CloneGenericType2 = 11,
+                CloneGenericType10 = 12,
+                CloneNew = 13,
+                CloneFields = 14,
+                SaveNew = 15,
+                LoadFields = 16,
+                CloneFields2 = 17,
+                SaveArray10 = 18,
+                SaveGenericType10 = 19,
+            }
             /// <summary>
             /// 
             /// </summary>
             /// <returns>aborted?</returns>
-            internal static bool Error(Exception ex, string comment = "")
+            internal static bool HandleError(Exception ex, ErrorCode error_code, string comment = "")
             {
-                if (exceptionBehavior == ExceptionBehavior.ThrowException) throw new Exception(ex.Message + "\r\n" + comment);
+                var code = "";
+                if (error_code != ErrorCode.None)
+                    code += " [error:" + (int)error_code + "] ";
+                if (exceptionBehavior == ExceptionBehavior.ThrowException) throw new Exception(code + ex.Message + "\r\n" + comment);
                 else if (exceptionBehavior == ExceptionBehavior.MessageBox)
                 {
-                    var res = MessageBox.Show(ex.Message + "\r\n" + comment +
+                    var res = MessageBox.Show(code + ex.Message + "\r\n" + comment +
                         "\r\nYes: Continue\r\nNo: Continue, don't show errors any more\r\nCancel: Abort", "Error in saver", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Warning);
                     if (res == DialogResult.No)
                         exceptionBehavior = ExceptionBehavior.Hide;
@@ -461,12 +693,24 @@ namespace Saver
             Settings.Types.Add(new Settings.SaveAbleType()
             {
                 type = typeof(Double),
-                Loader = (t, n, r, v) => Convert.ToDouble(Settings.GetNodeVal(n, r))
+                Loader = (t, n, r, v) =>
+                {
+                    var _v = Settings.GetNodeVal(n, r);
+                    if (_v == "NaN") return double.NaN;
+                    if (_v == "ناعدد") return double.NaN;
+                    return Convert.ToDouble(_v);
+                }
             });
             Settings.Types.Add(new Settings.SaveAbleType()
             {
                 type = typeof(Single),
-                Loader = (t, n, r, v) => Convert.ToSingle(Settings.GetNodeVal(n, r))
+                Loader = (t, n, r, v) =>
+                {
+                    var _v = Settings.GetNodeVal(n, r);
+                    if (_v == "NaN") return Single.NaN;
+                    if (_v == "ناعدد") return Single.NaN;
+                    return Convert.ToSingle(_v);
+                }
             });
             Settings.Types.Add(new Settings.SaveAbleType()
             {
@@ -561,14 +805,14 @@ namespace Saver
                                     }
                                     catch (Exception ex)
                                     {
-                                        Settings.Error(ex, "Error in set value for: " + n + "." + n + i);
+                                        Settings.HandleError(ex, Settings.ErrorCode.LoadArray, $"Error in set value for: { Tools.GetNodeFullName(r) }.{ n }[{ i }] (Type:{t_},Value:{V[i]})");
                                     }
                             }
                             if (t.IsGenericType)
                             {
                                 var t_ = t.GetGenericArguments()[0];
                                 var T_ = typeof(List<>).MakeGenericType(t_);
-                                v = Activator.CreateInstance(T_);
+                                v = CreateInstance(T_, n);
                                 for (int i = 0; i < V.Length; i++)
                                     try
                                     {
@@ -577,7 +821,7 @@ namespace Saver
                                     }
                                     catch (Exception ex)
                                     {
-                                        Settings.Error(ex, "Error in set value for: " + n + "." + n + i);
+                                        Settings.HandleError(ex, Settings.ErrorCode.LoadGenericType, $"Error in set value for: { Tools.GetNodeFullName(r) }.{ n }[{ i }] (Type:{t_},Value:{V[i]})");
                                     }
                             }
                             return v;
@@ -763,8 +1007,8 @@ namespace Saver
             if (t == typeof(UInt16)) return Convert.ToUInt16(val);
             if (t == typeof(uint)) return Convert.ToUInt32(val);
             if (t == typeof(UInt64)) return Convert.ToUInt64(val);
-            if (t == typeof(Double)) return Convert.ToDouble(val);
-            if (t == typeof(Single)) return Convert.ToSingle(val);
+            if (t == typeof(Double)) return (val == "NaN" || val == "ناعدد" ? double.NaN : Convert.ToDouble(val));
+            if (t == typeof(Single)) return (val == "NaN" || val == "ناعدد" ? Single.NaN : Convert.ToSingle(val));
             if (t == typeof(Decimal)) return Convert.ToDecimal(val);
             if (t == typeof(Char)) return Convert.ToChar(val);
             if (t == typeof(Boolean)) return Convert.ToBoolean(val);
@@ -784,6 +1028,19 @@ namespace Saver
                 if (n_ != null) return n_;
             }
             return null;
+        }
+        [ThreadStatic, DontSave]
+        static List<Action<int>> waiting_jobs = new List<Action<int>>();
+        static void RunWaiting_Jobs()
+        {
+            while (waiting_jobs.Count > 0)
+            {
+                for (int j = waiting_jobs.Count - 1; j >= 0; j--)
+                {
+                    waiting_jobs[j](j);
+                    waiting_jobs.RemoveAt(j);
+                }
+            }
         }
         static object ObjectLoader(Type t, string n, XmlNode r, object val)
         {
@@ -830,7 +1087,7 @@ namespace Saver
                             }
                             catch (Exception ex)
                             {
-                                Settings.Error(ex, "Error in set value for: " + n + "[" + i + "]");
+                                Settings.HandleError(ex, Settings.ErrorCode.LoadArray2, "Error in set value for: " + Tools.GetNodeFullName(r) + "." + n + "[" + i + "]");
                             }
                         return v;
                     }
@@ -841,7 +1098,7 @@ namespace Saver
                             var T_ = typeof(List<>).MakeGenericType(t_);
                             if (t == T_)
                             {
-                                v = Activator.CreateInstance(T_);
+                                v = CreateInstance(T_, n);
                                 if (!Settings.IgnorUIDs.Contains(t))
                                 {
                                     if (!UIDs.ContainsKey(id)) UIDs.Add(id, v);
@@ -862,7 +1119,7 @@ namespace Saver
                                     }
                                     catch (Exception ex)
                                     {
-                                        Settings.Error(ex, "Error in set value for: " + n + "[" + i + "] id:" + GetUID(item));
+                                        Settings.HandleError(ex, Settings.ErrorCode.LoadGenericType1, "Error in set value for: " + Tools.GetNodeFullName(r) + "." + n + "[" + i + "] id:" + GetUID(item));
                                         T_.InvokeMember("Add", BindingFlags.InvokeMethod, null, v, new object[] { null });
                                     }
                                 }
@@ -870,49 +1127,52 @@ namespace Saver
                             }
                         }
                     }
-
                     {
                         if (!t.IsSubclassOf(typeof(Control)) && v == null)
-                            try
-                            {
-                                v = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(t);
-                            }
-                            catch
-                            {
-                                try
-                                {
-                                    v = Activator.CreateInstance(t);
-                                }
-                                catch (Exception ex)
-                                {
-                                    Settings.Error(ex, n + ", " + (t != null ? t.FullName : "!!" + t.FullName) + ", " + v);
-                                }
-                            }
+                            v = CreateInstance(t, n);
+                        if (v != null && v is SaveAble)
+                            (v as SaveAble).BeforeLoad();
                         if (!Settings.IgnorUIDs.Contains(t))
                         {
                             if (!UIDs.ContainsKey(id)) UIDs.Add(id, v);
                             else UIDs[id] = v;
                         }
-                        var F = Settings.GetFields(v.GetType());
-                        foreach (var f in F)
-                            if (Settings.HasNode(GetFieldName(f), node))
-                                try
-                                {
-                                    if (Settings.abort) return null;
-                                    var n_ = Settings.GetNode(GetFieldName(f), node);
-                                    var fT = Settings.GetTpyeFromNode(n_, f.FieldType);
-                                    var st = Settings.SaveAbleType.Get(fT);
-                                    if (st != null)
-                                        f.SetValue(v, st.Loader(fT, GetFieldName(f), node, f.GetValue(v)));
-                                }
-                                catch (Exception ex)
-                                {
-                                    Settings.Error(ex, "Error in set value for: " + n + "." + GetFieldName(f));
-                                }
+
+                        if (Settings.use_waiting_jobs)
+                        {
+                            var n__ = n;
+                            var node__ = node;
+                            var v__ = v;
+                            waiting_jobs.Add(int_ => LoadFields(n__, v__, node__));
+                        }
+                        else
+                            LoadFields(n, v, node);
+                        if (v != null && v is SaveAble)
+                            (v as SaveAble).AfterLoad();
                     }
                     return v;
                 }
             return null;
+        }
+        static object CreateInstance(Type t, string name = null)
+        {
+            object v = null;
+            try
+            {
+                v = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(t);
+            }
+            catch
+            {
+                try
+                {
+                    v = Activator.CreateInstance(t);
+                }
+                catch (Exception ex)
+                {
+                    Settings.HandleError(ex, Settings.ErrorCode.SaveNew, name + " , " + (t != null ? t.FullName : "!!" + t.FullName) + ", ");
+                }
+            }
+            return v;
         }
         static object ObjectCloner(object v, object clone_to = null)
         {
@@ -954,7 +1214,7 @@ namespace Saver
                         }
                         catch (Exception ex)
                         {
-                            Settings.Error(ex, "Error in set value for: " + v + "." + i);
+                            Settings.HandleError(ex, Settings.ErrorCode.CloneArray1, "Error in set value for: " + v + "." + i);
                         }
                     return v2;
                 }
@@ -978,7 +1238,7 @@ namespace Saver
                             }
                             catch (Exception ex)
                             {
-                                Settings.Error(ex, "Error in set value for: " + v + "." + i + "," + j);
+                                Settings.HandleError(ex, Settings.ErrorCode.CloneArray2, "Error in set value for: " + v + "." + i + "," + j);
                             }
                     return v2;
                 }
@@ -1004,11 +1264,11 @@ namespace Saver
                                 }
                                 catch (Exception ex)
                                 {
-                                    Settings.Error(ex, "Error in set value for: " + v + "." + i + "," + j + "," + k);
+                                    Settings.HandleError(ex, Settings.ErrorCode.CloneArray3, "Error in set value for: " + v + "." + i + "," + j + "," + k);
                                 }
                     return v2;
                 }
-                Settings.Error(new Exception("Can't clone type: " + t));
+                Settings.HandleError(new Exception("Can't clone type: " + t), error_code: Settings.ErrorCode.CloneArray10);
             }
             else if (t.IsGenericType)
             {
@@ -1018,7 +1278,7 @@ namespace Saver
                     var T_ = typeof(List<>).MakeGenericType(t_);
                     if (t == T_)
                     {
-                        var v2 = clone_to ?? Activator.CreateInstance(t);
+                        var v2 = clone_to ?? CreateInstance(t);
                         if (!Settings.IgnorUIDs.Contains(t))
                         {
                             if (!UIDs.ContainsKey(id)) UIDs.Add(id, v2);
@@ -1036,7 +1296,7 @@ namespace Saver
                             }
                             catch (Exception ex)
                             {
-                                Settings.Error(ex, "Error in set value for: " + v + ".");
+                                Settings.HandleError(ex, Settings.ErrorCode.CloneGenericType1, "Error in set value for: " + v + ".");
                                 T_.InvokeMember("Add", BindingFlags.InvokeMethod, null, v2, new object[] { null });
                             }
                         }
@@ -1050,7 +1310,7 @@ namespace Saver
                     var T_ = typeof(Dictionary<,>).MakeGenericType(t1_, t2_);
                     if (t == T_)
                     {
-                        var v2 = clone_to ?? Activator.CreateInstance(t);
+                        var v2 = clone_to ?? CreateInstance(t);
                         if (!Settings.IgnorUIDs.Contains(t))
                         {
                             if (!UIDs.ContainsKey(id)) UIDs.Add(id, v2);
@@ -1076,41 +1336,45 @@ namespace Saver
                             }
                             catch (Exception ex)
                             {
-                                Settings.Error(ex, "Error in set value for: " + v + ".");
+                                Settings.HandleError(ex, Settings.ErrorCode.CloneGenericType2, "Error in set value for: " + v + ".");
                                 T_.InvokeMember("Add", BindingFlags.InvokeMethod, null, v2, new object[] { null, null });
                             }
                         }
                         return v2;
                     }
                 }
-                Settings.Error(new Exception("Can't clone type: " + t));
+                Settings.HandleError(new Exception("Can't clone type: " + t), Settings.ErrorCode.CloneGenericType10);
             }
 
             {
                 object v2 = null;
                 try
                 {
-                    v2 = clone_to ?? System.Runtime.Serialization.FormatterServices.GetUninitializedObject(t);
-                }
-                catch
-                {
-                    try
-                    {
-                        v2 = clone_to ?? Activator.CreateInstance(t);
-                    }
-                    catch (Exception ex)
-                    {
-                        Settings.Error(ex, "Clone: (new) " + (t != null ? t.FullName : "!!") + ", " + v);
-                    }
-                }
-                try
-                {
-                    UIDs.Add(id, v2);
-                    CloneFields(v, v2);
+                    v2 = clone_to ?? CreateInstance(t);
                 }
                 catch (Exception ex)
                 {
-                    Settings.Error(ex, "Clone: " + (t != null ? t.FullName : "!!" + v));
+                    Settings.HandleError(ex, Settings.ErrorCode.CloneNew, "Clone: (new) " + (t != null ? t.FullName : "!!") + ", " + v);
+                }
+                try
+                {
+                    if (v2 != null && v2 is SaveAble)
+                        (v2 as SaveAble).BeforeClone();
+                    UIDs.Add(id, v2);
+                    if (Settings.use_waiting_jobs)
+                    {
+                        var v__ = v;
+                        var v2__ = v2;
+                        waiting_jobs.Add(int_ => CloneFields(v__, v2__));
+                    }
+                    else
+                        CloneFields(v, v2);
+                    if (v2 != null && v2 is SaveAble)
+                        (v2 as SaveAble).AfterClone();
+                }
+                catch (Exception ex)
+                {
+                    Settings.HandleError(ex, Settings.ErrorCode.CloneFields, "Clone: " + (t != null ? t.FullName : "!!" + v));
 
                 }
                 return v2;
@@ -1139,8 +1403,8 @@ namespace Saver
                     var o = UIDs[id];
                     Settings.SetAttrib("ref", UIDs_node_name[id], node);
                     //if (v.GetType() != o.GetType())
-                    Settings.SetAttrib("Type", o.GetType() + "", node);
-                    return null;
+                    // Settings.SetAttrib("Type", Settings.TypeFromMap(o.GetType() + "", true), node);
+                    return node;
                 }
                 UIDs.Add(id, v);
                 UIDs_node_name.Add(id, n);
@@ -1150,9 +1414,9 @@ namespace Saver
             if (v is System.Collections.IEnumerable && !(v is string) && (t.IsArray || (t.IsGenericType && t.GetGenericArguments().Length == 1)))
             {
                 if (t.IsArray && t.GetArrayRank() != 1)
-                    Settings.Error(new Exception("Can't save type: " + t));
+                    Settings.HandleError(new Exception("Can't save type: (" + n + ")" + t), Settings.ErrorCode.SaveArray10);
                 if (t.IsGenericType && t.GetGenericArguments().Length != 1)
-                    Settings.Error(new Exception("Can't save type: " + t));
+                    Settings.HandleError(new Exception("Can't save type: " + t), Settings.ErrorCode.SaveGenericType10);
                 int i = 0;
                 var vt_ = t.IsArray ? t.GetElementType() : t.GetGenericArguments()[0];
                 try
@@ -1174,7 +1438,7 @@ namespace Saver
                                 object_node[a] = n_;
                             ignor_save_fields = false;
                             if (n_ != null && vt_ != fT)
-                                Settings.SetAttrib("Type", fT + "", n_);
+                                Settings.SetAttrib("Type", Settings.TypeFromMap(fT + "", true), n_);
                         }
                     }
                     foreach (var a in object_node)
@@ -1188,13 +1452,53 @@ namespace Saver
             }
             else
             {
-                SaveFields(v, node);
+                if (v != null && v is SaveAble)
+                    (v as SaveAble).BeforeSave();
+                if (Settings.use_waiting_jobs)
+                {
+                    var node__ = node;
+                    var v__ = v;
+                    waiting_jobs.Add(int_ => SaveFields(v__, node__));
+                }
+                else
+                    SaveFields(v, node);
+                if (v != null && v is SaveAble)
+                    (v as SaveAble).AfterSave();
             }
             if (Settings.abort) return null;
             return node;
         }
         [DontSave, ThreadStatic]
         static bool ignor_save_fields = false;
+        static void LoadFields(string n, object v, XmlNode node)
+        {
+            var F = Settings.GetFields(v.GetType());
+            foreach (var f in F)
+                if (Settings.HasNode(GetFieldName(f), node))
+                {
+                    Type fT = null;
+                    object val = null;
+                    try
+                    {
+                        if (Settings.abort) return;
+                        var n_ = Settings.GetNode(GetFieldName(f), node);
+                        if (Settings.GetAttrib("null", n_) + "" != "1")
+                        {
+                            fT = Settings.GetTpyeFromNode(n_, f.FieldType);
+                            var st = Settings.SaveAbleType.Get(fT);
+                            if (st != null)
+                            {
+                                val = st.Loader(fT, GetFieldName(f), node, f.GetValue(v));
+                                f.SetValue(v, val);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Settings.HandleError(ex, Settings.ErrorCode.LoadFields, $"Error in set value for: {Tools.GetNodeFullName(node) }.{ GetFieldName(f)} (Type:'{fT?.Name + ""}',Value:'{val + ""}')");
+                    }
+                }
+        }
         static void SaveFields(object v, XmlNode node)
         {
             if (ignor_save_fields) return;
@@ -1223,7 +1527,7 @@ namespace Saver
                         var n_ = st.Saver(GetFieldName(f), fval, node);
                         // if (!(fval.GetType() + "").Contains("["))
                         if (n_ != null && f.FieldType != fT)
-                            Settings.SetAttrib("Type", fT + "", n_);
+                            Settings.SetAttrib("Type", Settings.TypeFromMap(fT + "", true), n_);
                     }
                 }
             }
@@ -1245,7 +1549,7 @@ namespace Saver
                 }
                 catch (Exception ex)
                 {
-                    Settings.Error(ex, "Error in field: " + v.GetType().FullName + " > " + f.Name);
+                    Settings.HandleError(ex, Settings.ErrorCode.CloneFields2, "Error in field: " + v.GetType().FullName + " > " + f.Name);
                 }
         }
         #endregion
@@ -1334,10 +1638,11 @@ namespace Saver
         /// <returns></returns>
         protected static void BeginSave()
         {
+            xml = new XmlDocument();
             Settings.abort = false;
+            waiting_jobs = new List<Action<int>>();
             UIDs = new Dictionary<string, object>();
             UIDs_node_name = new Dictionary<string, string>();
-            xml = new XmlDocument();
             root = xml.AppendChild(xml.CreateElement("Root"));
             Settings.SetAttrib("ver", Settings.Version + "", root);
             var d = DateTime.Now;
@@ -1353,32 +1658,38 @@ namespace Saver
         /// <returns></returns>
         protected static string EndSave()
         {
-            if (!Settings.FormatedXML)
-                return xml.OuterXml;
-            var sb = new StringBuilder();
-            using (var sw = new StringWriter(sb))
+            try
             {
-                xml.Save(sw);
+                if (!Settings.FormatedXML)
+                    return xml.OuterXml;
+                var sb = new StringBuilder();
+                using (var sw = new StringWriter(sb))
+                {
+                    xml.Save(sw);
+                }
+                var str = sb + "";
+                var p1 = str.IndexOf("\n");
+                return str.Substring(p1 + 1);
             }
-            var str = sb + "";
-            var p1 = str.IndexOf("\n");
-            UIDs = null;
-            UIDs_node_name = null;
-            xml = null;
-            root = null;
-            GC.Collect();
-            return str.Substring(p1 + 1);
+            finally
+            {
+                EndLoad();
+            }
         }
         /// <summary>
         /// before load done, (internally)
         /// </summary>
         /// <returns></returns>
-        protected static void BeginLoad(string fileName)
+        protected static void BeginLoad(string str, bool IsFile)
         {
-            Settings.abort = false;
-            UIDs = new Dictionary<string, object>();
             xml = new XmlDocument();
-            xml.Load(fileName);
+            Settings.abort = false;
+            waiting_jobs = new List<Action<int>>();
+            UIDs = new Dictionary<string, object>();
+            if (IsFile)
+                xml.Load(str);
+            else
+                xml.LoadXml(str);
             root = xml.ChildNodes[0];
             Settings.LoadedVersion = -1;
             double.TryParse(Settings.GetAttrib("ver", root), out Settings.LoadedVersion);
@@ -1407,21 +1718,20 @@ namespace Saver
 
         static string ValidName(string name)
         {
-            return Tools.Encrypt(name.Replace("<", "_").Replace(">", "_").Replace(" ", "_"));
+            return Tools.Encrypt(name.Replace('<', '_').Replace('>', '_').Replace(' ', '_'));
         }
 
-        static string GetFileHash(string file)
+        static string GetFileHash(string fileName)
         {
-            return GetStrHash(File.ReadAllText(file));
+            return GetStrHash(File.ReadAllText(fileName));
         }
+        [DontSave]
+        static Regex _remove_id_Regex = new Regex("id=\"[^\"]+\"", RegexOptions.Compiled);
         static string GetStrHash(string str)
         {
-            using (var md5Hash = System.Security.Cryptography.MD5.Create())
+            using (var md5Hash = MD5.Create())
             {
-                var rg = new System.Text.RegularExpressions.Regex("id=\"[^\"]+\"", System.Text.RegularExpressions.RegexOptions.Compiled);
-                str = rg.Replace(str.Substring(50), "$");
-                //rg = new System.Text.RegularExpressions.Regex("time=\"[^\"]+\"");
-                //str = rg.Replace(str, "time");
+                str = _remove_id_Regex.Replace(str.Substring(50), "$");
                 var data = md5Hash.ComputeHash(Encoding.UTF8.GetBytes(str));
                 var sBuilder = new StringBuilder();
                 for (int i = 0; i < data.Length; i++)
@@ -1435,22 +1745,85 @@ namespace Saver
         /// <returns>Hash Code</returns>
         string Save4Hash()
         {
-            BeginSave();
-            Settings.SaveAbleType.Get(this.GetType()).Saver("Data", this, root);
-            return GetStrHash(EndSave());
+            return Run(() =>
+            {
+                BeginSave();
+                Settings.SaveAbleType.Get(this.GetType()).Saver("Data", this, root);
+                RunWaiting_Jobs();
+                return GetStrHash(EndSave());
+            });
         }
         [DontSave, ThreadStatic]
         string FileHash = "";
+
+        static string Run(Act2 act)
+        {
+            if (xml != null) // قبلا در همین ترد در حال ذخیره یا لود است - از داخل تایمر ها ممکن است رخ دهد
+            {
+                var res = "";
+                var th = new System.Threading.Thread(new System.Threading.ThreadStart(() => { res = act(); }));
+                th.Start();
+                for (int i = 0; i < 2000 && th.IsAlive; i++)
+                    System.Threading.Thread.Sleep(100);
+                return res;
+            }
+            else
+                return act();
+        }
+        static void Run(Act1 act)
+        {
+            if (xml != null) // قبلا در همین ترد در حال ذخیره یا لود است - از داخل تایمر ها ممکن است رخ دهد
+            {
+                var th = new System.Threading.Thread(new System.Threading.ThreadStart(act));
+                th.Start();
+                for (int i = 0; i < 2000 && th.IsAlive; i++)
+                    System.Threading.Thread.Sleep(100);
+            }
+            else
+                act();
+        }
+        delegate void Act1();
+        delegate string Act2();
         #endregion
 
         #region Save/Load methods
+
+        /// <summary>
+        /// باز تعریف نحوه ذخیره شده
+        /// حواست به رفرنس ها باشه!
+        /// </summary> 
+        /// <returns></returns>
+        public virtual string CustomSaver()
+        {
+            throw new NotImplementedException("CustomSaver");
+        }
+        /// <summary>
+        /// باز تعریف نحوه لود شدن 
+        /// حواست به رفرنس ها باشه!
+        /// </summary>
+        /// <param name="content"></param> 
+        public virtual void CustomLoader(string content)
+        {
+            throw new NotImplementedException("CustomLoader");
+        }
+
+        /// <summary>
+        /// هشدار:
+        /// اگر اطلاعات کافی ندارید این متد را باز تعریف استفاده نکنید
+        /// </summary>
+        /// <param name="IgnorObjects"></param>
+        /// <returns></returns>
         public virtual object Clone(params object[] IgnorObjects)
         {
-            return Clone(this, IgnorObjects);
-
+            BeforeClone();
+            var res = Clone(this, IgnorObjects);
+            AfterClone();
+            return res;
         }
         /// <summary>
         /// clone an abject to this
+        /// هشدار:
+        /// اگر اطلاعات کافی ندارید این متد را باز تعریف استفاده نکنید
         /// </summary>
         /// <param name="obj"></param>
         /// <param name="IgnorObjects"></param>
@@ -1459,13 +1832,16 @@ namespace Saver
             var IgnorSaveObjects_count = Settings.IgnorSaveObjects.Count;
             try
             {
+                BeforeLoad();
                 if (IgnorObjects != null)
                     Settings.IgnorSaveObjects.AddRange(IgnorObjects);
                 Settings.abort = false;
+                waiting_jobs = new List<Action<int>>();
                 UIDs = new Dictionary<string, object>();
                 UIDs_node_name = new Dictionary<string, string>();
 
                 ObjectCloner(obj, this);
+                RunWaiting_Jobs();
             }
             finally
             {
@@ -1473,6 +1849,7 @@ namespace Saver
                 UIDs_node_name = null;
                 while (Settings.IgnorSaveObjects.Count > IgnorSaveObjects_count)
                     Settings.IgnorSaveObjects.RemoveAt(IgnorSaveObjects_count);
+                AfterLoad();
             }
         }
         public static T Clone<T>(T obj, params object[] IgnorObjects)
@@ -1488,9 +1865,12 @@ namespace Saver
                     Settings.IgnorSaveObjects.AddRange(IgnorObjects);
                 Settings.abort = false;
                 UIDs = new Dictionary<string, object>();
+                waiting_jobs = new List<Action<int>>();
                 UIDs_node_name = new Dictionary<string, string>();
 
-                return ObjectCloner(obj);
+                var res = ObjectCloner(obj);
+                RunWaiting_Jobs();
+                return res;
             }
             finally
             {
@@ -1501,42 +1881,79 @@ namespace Saver
             }
         }
         /// <summary>
-        /// 
+        /// هشدار:
+        /// اگر اطلاعات کافی ندارید این متد را باز تعریف استفاده نکنید
+        /// </summary>
+        /// <param name="fileName"></param>
+        /// <param name="IgnorObjects">List of objects that will not be saved</param>
+        /// <returns>Hash Code</returns>
+        public virtual string Save_NoID(string fileName, params object[] IgnorObjects)
+        {
+            var res = Save(fileName, IgnorObjects: IgnorObjects);
+            var str = File.ReadAllText(fileName);
+            str = _remove_id_Regex.Replace(str, "");
+            for (int i = 0; i < 100; i++)
+            {
+                for (int j = 0; j < 10; j++)
+                    str = str.Replace(" <", "<");
+                if (!str.Contains(" <"))
+                    break;
+            }
+            File.WriteAllText(fileName, str);
+            return res;
+        }
+        /// <summary>
+        /// هشدار:
+        /// اگر اطلاعات کافی ندارید این متد را باز تعریف استفاده نکنید
         /// </summary>
         /// <param name="fileName"></param>
         /// <param name="IgnorObjects">List of objects that will not be saved</param>
         /// <returns>Hash Code</returns>
         public virtual string Save(string fileName, params object[] IgnorObjects)
         {
-            var IgnorSaveObjects_count = Settings.IgnorSaveObjects.Count;
-            try
+            return Run(() =>
             {
-                if (IgnorObjects != null)
-                    Settings.IgnorSaveObjects.AddRange(IgnorObjects);
-                BeginSave();
-                this.FileHash = "";
-                Settings.SaveAbleType.Get(this.GetType()).Saver("Data", this, root);
-                var str = EndSave();
-                File.WriteAllText(fileName, str, encoding: Encoding.Unicode);
-                FileHash = GetStrHash(str);
-                return FileHash;
-            }
-            finally
-            {
-                while (Settings.IgnorSaveObjects.Count > IgnorSaveObjects_count)
-                    Settings.IgnorSaveObjects.RemoveAt(IgnorSaveObjects_count);
-            }
+                var IgnorSaveObjects_count = Settings.IgnorSaveObjects.Count;
+                try
+                {
+                    BeforeSave();
+                    if (IgnorObjects != null)
+                        Settings.IgnorSaveObjects.AddRange(IgnorObjects);
+                    BeginSave();
+                    this.FileHash = "";
+                    Settings.SaveAbleType.Get(this.GetType()).Saver("Data", this, root);
+                    RunWaiting_Jobs();
+                    var str = EndSave();
+                    File.WriteAllText(fileName, str, encoding: Encoding.Unicode);
+                    FileHash = GetStrHash(str);
+                    return FileHash;
+                }
+                finally
+                {
+                    while (Settings.IgnorSaveObjects.Count > IgnorSaveObjects_count)
+                        Settings.IgnorSaveObjects.RemoveAt(IgnorSaveObjects_count);
+                    AfterSave();
+                }
+            });
         }
         /// <summary>
         /// Load from file
+        /// هشدار:
+        /// اگر اطلاعات کافی ندارید این متد را باز تعریف استفاده نکنید
         /// </summary>
         /// <param name="fileName"></param>
         public virtual void Load(string fileName)
         {
-            BeginLoad(fileName);
-            Settings.SaveAbleType.Get(this.GetType()).Loader(this.GetType(), "Data", root, this);
-            FileHash = GetFileHash(fileName);
-            EndLoad();
+            Run(() =>
+            {
+                BeforeLoad();
+                BeginLoad(fileName, true);
+                Settings.SaveAbleType.Get(this.GetType()).Loader(this.GetType(), "Data", root, this);
+                RunWaiting_Jobs();
+                FileHash = GetFileHash(fileName);
+                EndLoad();
+                AfterLoad();
+            });
         }
         /// <summary>
         /// Save an object to file
@@ -1546,16 +1963,20 @@ namespace Saver
         /// <returns>Hash Code</returns>
         public static string Save(string fileName, object obj)
         {
-            BeginSave();
-            if (obj is SaveAble)
-                ((SaveAble)obj).FileHash = "";
-            Settings.SaveAbleType.Get(obj.GetType()).Saver("Data", obj, root);
-            var str = EndSave();
-            File.WriteAllText(fileName, str, Encoding.Unicode);
-            var LastFileHash = GetStrHash(str);
-            if (obj is SaveAble)
-                ((SaveAble)obj).FileHash = LastFileHash;
-            return LastFileHash;
+            return Run(() =>
+            {
+                BeginSave();
+                if (obj is SaveAble)
+                    ((SaveAble)obj).FileHash = "";
+                Settings.SaveAbleType.Get(obj.GetType()).Saver("Data", obj, root);
+                RunWaiting_Jobs();
+                var str = EndSave();
+                File.WriteAllText(fileName, str, Encoding.Unicode);
+                var LastFileHash = GetStrHash(str);
+                if (obj is SaveAble)
+                    ((SaveAble)obj).FileHash = LastFileHash;
+                return LastFileHash;
+            });
         }
         /// <summary>
         /// load from file
@@ -1565,8 +1986,9 @@ namespace Saver
         /// <returns></returns>
         public static T Load<T>(string fileName)
         {
-            BeginLoad(fileName);
+            BeginLoad(fileName, true);
             var res = Settings.SaveAbleType.Get(typeof(T)).Loader(typeof(T), "Data", root, null);
+            RunWaiting_Jobs();
             if (res is SaveAble)
                 ((SaveAble)res).FileHash = GetFileHash(fileName);
             return (T)res;
@@ -1579,8 +2001,9 @@ namespace Saver
         /// <returns></returns>
         public static object Load(string fileName, object obj)
         {
-            BeginLoad(fileName);
+            BeginLoad(fileName, true);
             var res = Settings.SaveAbleType.Get(obj.GetType()).Loader(obj.GetType(), "Data", root, obj);
+            RunWaiting_Jobs();
             if (res is SaveAble)
                 ((SaveAble)res).FileHash = GetFileHash(fileName);
             return res;
@@ -1593,43 +2016,88 @@ namespace Saver
         /// <returns></returns>
         public static object Load_(string fileName, Type type)
         {
-            BeginLoad(fileName);
-            object v;
-            try
-            {
-                v = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(type);
-            }
-            catch
-            {
-                v = Activator.CreateInstance(type);
-            }
+            BeginLoad(fileName, true);
+            object v = CreateInstance(type);
+
             var res = Settings.SaveAbleType.Get(type).Loader(type, "Data", root, v);
+            RunWaiting_Jobs();
             if (res is SaveAble)
                 ((SaveAble)res).FileHash = GetFileHash(fileName);
             return res;
         }
 
+        /// <summary> 
+        /// هشدار:
+        /// اگر اطلاعات کافی ندارید این متد را باز تعریف استفاده نکنید
+        /// </summary>
+        public virtual void BeforeClone()
+        {
+        }
+        /// <summary> 
+        /// هشدار:
+        /// اگر اطلاعات کافی ندارید این متد را باز تعریف استفاده نکنید
+        /// </summary>
+        public virtual void AfterClone()
+        {
+        }
+        /// <summary> 
+        /// هشدار:
+        /// اگر اطلاعات کافی ندارید این متد را باز تعریف استفاده نکنید
+        /// </summary>
+        public virtual void BeforeLoad()
+        {
+        }
+        /// <summary> 
+        /// هشدار:
+        /// اگر اطلاعات کافی ندارید این متد را باز تعریف استفاده نکنید
+        /// </summary>
+        public virtual void AfterLoad()
+        {
+        }
+        /// <summary> 
+        /// هشدار:
+        /// اگر اطلاعات کافی ندارید این متد را باز تعریف استفاده نکنید
+        /// </summary>
+        public virtual void BeforeSave()
+        {
+        }
+        /// <summary> 
+        /// هشدار:
+        /// اگر اطلاعات کافی ندارید این متد را باز تعریف استفاده نکنید
+        /// </summary>
+        public virtual void AfterSave()
+        {
+        }
+
         /// <summary>
-        /// Save object as a string instead a file
+        /// Save object as a string instead a file 
+        /// هشدار:
+        /// اگر اطلاعات کافی ندارید این متد را باز تعریف استفاده نکنید 
         /// </summary>
         /// <param name="IgnorObjects"></param>
         /// <returns></returns>
         public virtual string SaveString(params object[] IgnorObjects)
         {
-            var IgnorSaveObjects_count = Settings.IgnorSaveObjects.Count;
-            try
+            return Run(() =>
             {
-                if (IgnorObjects != null)
-                    Settings.IgnorSaveObjects.AddRange(IgnorObjects);
-                BeginSave();
-                Settings.SaveAbleType.Get(this.GetType()).Saver("Data", this, root);
-                return EndSave();
-            }
-            finally
-            {
-                while (Settings.IgnorSaveObjects.Count > IgnorSaveObjects_count)
-                    Settings.IgnorSaveObjects.RemoveAt(IgnorSaveObjects_count);
-            }
+                var IgnorSaveObjects_count = Settings.IgnorSaveObjects.Count;
+                try
+                {
+                    BeforeSave();
+                    if (IgnorObjects != null)
+                        Settings.IgnorSaveObjects.AddRange(IgnorObjects);
+                    BeginSave();
+                    Settings.SaveAbleType.Get(this.GetType()).Saver("Data", this, root);
+                    RunWaiting_Jobs();
+                    return EndSave();
+                }
+                finally
+                {
+                    while (Settings.IgnorSaveObjects.Count > IgnorSaveObjects_count)
+                        Settings.IgnorSaveObjects.RemoveAt(IgnorSaveObjects_count);
+                    AfterSave();
+                }
+            });
         }
         /// <summary>
         /// Save object as a string instead a file
@@ -1638,44 +2106,41 @@ namespace Saver
         /// <returns></returns>
         public static string SaveString(object obj)
         {
-            var IgnorSaveObjects_count = Settings.IgnorSaveObjects.Count;
-            try
+            return Run(() =>
             {
-                BeginSave();
-                Settings.SaveAbleType.Get(obj.GetType()).Saver("Data", obj, root);
-                return EndSave();
-            }
-            finally
-            {
-                while (Settings.IgnorSaveObjects.Count > IgnorSaveObjects_count)
-                    Settings.IgnorSaveObjects.RemoveAt(IgnorSaveObjects_count);
-            }
+                var IgnorSaveObjects_count = Settings.IgnorSaveObjects.Count;
+                try
+                {
+                    BeginSave();
+                    Settings.SaveAbleType.Get(obj.GetType()).Saver("Data", obj, root);
+                    RunWaiting_Jobs();
+                    return EndSave();
+                }
+                finally
+                {
+                    while (Settings.IgnorSaveObjects.Count > IgnorSaveObjects_count)
+                        Settings.IgnorSaveObjects.RemoveAt(IgnorSaveObjects_count);
+                }
+            });
         }
         /// <summary>
         /// Load object from a string instead an file
+        /// هشدار:
+        /// اگر اطلاعات کافی ندارید این متد را باز تعریف استفاده نکنید 
         /// </summary>
         /// <param name="str"></param>
         public virtual void LoadString(string str)
         {
-            var f = Path.GetTempFileName() + "-LS";
-            try
+            Run(() =>
             {
-                File.WriteAllText(f, str);
-                Load(f);
-            }
-            finally
-            {
-                try
-                {
-                    File.Delete(f);
-                }
-                catch
-                {
-#if DEBUG
-                    throw;
-#endif
-                }
-            }
+                BeforeLoad();
+                BeginLoad(str, false);
+                Settings.SaveAbleType.Get(this.GetType()).Loader(this.GetType(), "Data", root, this);
+                RunWaiting_Jobs();
+                FileHash = GetStrHash(str);
+                EndLoad();
+                AfterLoad();
+            });
         }
         /// <summary>
         /// Load object from a string instead an file
@@ -1727,6 +2192,8 @@ namespace Saver
         }
         /// <summary>
         /// is saved in a file
+        /// هشدار:
+        /// اگر اطلاعات کافی ندارید این متد را باز تعریف استفاده نکنید 
         /// </summary>
         [Browsable(false)]
         public virtual bool IsSaved
@@ -1736,6 +2203,8 @@ namespace Saver
         }
         /// <summary>
         /// is changed after last save in a file or load from a file
+        /// هشدار:
+        /// اگر اطلاعات کافی ندارید این متد را باز تعریف استفاده نکنید 
         /// </summary>
         [Browsable(false)]
         public virtual bool IsChanged
@@ -1759,7 +2228,7 @@ namespace Saver
     /// <summary>
     /// this field will not be saved
     /// </summary>
-    [AttributeUsage(AttributeTargets.Event | AttributeTargets.Field | AttributeTargets.Class)]
+    [AttributeUsage(AttributeTargets.Event | AttributeTargets.Field | AttributeTargets.Class | AttributeTargets.Property)]
     public class DontSave : Attribute
     {
         /// <summary>
@@ -1773,12 +2242,33 @@ namespace Saver
         /// <returns></returns>
         public static bool Save(FieldInfo f)
         {
-            if (f.Name == "_uid_") return false;
+            //if (f.Name == "_uid_") return false;
             if (DisableGlobaly) return true;
-            var AT = f.FieldType.GetCustomAttributes(typeof(DontSave), true);
-            return
-              (AT == null || AT.Length == 0) &&
-              f.GetCustomAttributes(typeof(DontSave), true).Length == 0;
+            {
+                var AT = f.FieldType.GetCustomAttributes(typeof(DontSave), true);
+                if (AT != null && AT.Length > 0)
+                    return false;
+            }
+            var fName = SaveAble.Settings.NameFromMap(f);
+            if (fName.Contains(">k__BackingField"))
+            {
+                var name = fName.Replace(">k__BackingField", "").Substring(1);
+                var p = f.DeclaringType.GetProperty(name, BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Public);
+                if (p != null)
+                {
+                    var AT = p.GetCustomAttributes(typeof(DontSave), true);
+                    if (AT != null && AT.Length > 0)
+                        return false;
+                }
+                return true;
+            }
+            else
+            {
+                var AT = f.GetCustomAttributes(typeof(DontSave), true);
+                if (AT != null && AT.Length > 0)
+                    return false;
+            }
+            return true;
         }
         /// <summary>
         /// save or not?
@@ -1800,7 +2290,7 @@ namespace Saver
     /// <summary>
     /// will be saved if SaveIf.AllowSave is true
     /// </summary>
-    [AttributeUsage(AttributeTargets.Event | AttributeTargets.Field | AttributeTargets.Class)]
+    [AttributeUsage(AttributeTargets.Event | AttributeTargets.Field | AttributeTargets.Class | AttributeTargets.Property)]
     public class SaveCondition : Attribute
     {
         /// <summary>
@@ -1824,11 +2314,31 @@ namespace Saver
         public static bool Save(FieldInfo f)
         {
             if (SaveAll) return true;
-            var AT = f.GetCustomAttributes(typeof(SaveCondition), true);
-            if (AT == null || AT.Length == 0)
+            var fName = SaveAble.Settings.NameFromMap(f);
+            if (fName.Contains(">k__BackingField"))
+            {
+                var name = fName.Replace(">k__BackingField", "").Substring(1);
+                var p = f.DeclaringType.GetProperty(name, BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Public);
+                if (p != null)
+                {
+                    var AT = p.GetCustomAttributes(typeof(SaveCondition), true);
+                    if (AT != null && AT.Length > 0)
+                        return (AT[0] as SaveCondition).Save();
+                }
                 return true;
-            var at = AT[0] as SaveCondition;
-            return at.Save();
+            }
+            else
+            {
+                var AT = f.GetCustomAttributes(typeof(SaveCondition), true);
+                if (AT != null && AT.Length > 0)
+                    return (AT[0] as SaveCondition).Save();
+            }
+            {
+                var AT = f.FieldType.GetCustomAttributes(typeof(SaveCondition), true);
+                if (AT != null && AT.Length > 0)
+                    return (AT[0] as SaveCondition).Save();
+            }
+            return true;
         }
         /// <summary>
         /// save or not
@@ -1881,7 +2391,7 @@ namespace Saver
         /// <returns></returns>
         public static string Name(FieldInfo f)
         {
-            var fName = f.Name;
+            var fName = SaveAble.Settings.NameFromMap(f);
             if (fName.Contains(">k__BackingField"))
             {
                 var name = fName.Replace(">k__BackingField", "").Substring(1);
@@ -2103,6 +2613,22 @@ namespace Saver
                     }
                 }
             }
+        }
+
+        public static string GetNodeFullName(XmlNode n)
+        {
+            var res = n.Name;
+            while (n.ParentNode != null)
+            {
+                res = n.ParentNode.Name + "." + res;
+                n = n.ParentNode;
+            }
+            var reg = new Regex(@"\._(\d+)\.");
+            res = reg.Replace(res, (m) =>
+            {
+                return m.Value.Replace("._", "[").Replace(".", "].");
+            });
+            return res.Replace("#document.Root.", "");
         }
     }
     #endregion

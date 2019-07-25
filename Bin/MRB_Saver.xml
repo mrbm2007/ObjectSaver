@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <doc>
     <assembly>
-        <name>MRB_Saver</name>
+        <name>Saver</name>
     </assembly>
     <members>
         <member name="T:Saver.SaveAble">
@@ -22,6 +22,11 @@
         <member name="F:Saver.SaveAble.Settings.IgnorSaveObjects">
             <summary>
             این آبجک ها ذخیره نمی شوند
+            </summary>
+        </member>
+        <member name="F:Saver.SaveAble.Settings.use_nrmap">
+            <summary>
+            for obfuscation
             </summary>
         </member>
         <member name="F:Saver.SaveAble.Settings.FormatedXML">
@@ -114,7 +119,7 @@
             Save static fields?
             </summary>
         </member>
-        <member name="M:Saver.SaveAble.Settings.Error(System.Exception,System.String)">
+        <member name="M:Saver.SaveAble.Settings.HandleError(System.Exception,Saver.SaveAble.Settings.ErrorCode,System.String)">
             <summary>
             
             </summary>
@@ -147,7 +152,7 @@
             </summary>
             <returns></returns>
         </member>
-        <member name="M:Saver.SaveAble.BeginLoad(System.String)">
+        <member name="M:Saver.SaveAble.BeginLoad(System.String,System.Boolean)">
             <summary>
             before load done, (internally)
             </summary>
@@ -165,6 +170,14 @@
             </summary>
             <param name="obj"></param>
             <param name="IgnorObjects"></param>
+        </member>
+        <member name="M:Saver.SaveAble.Save_NoID(System.String,System.Object[])">
+            <summary>
+            
+            </summary>
+            <param name="fileName"></param>
+            <param name="IgnorObjects">List of objects that will not be saved</param>
+            <returns>Hash Code</returns>
         </member>
         <member name="M:Saver.SaveAble.Save(System.String,System.Object[])">
             <summary>
